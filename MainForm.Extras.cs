@@ -9,7 +9,7 @@ public sealed partial class MainForm
     const int HistorySeconds = 300;
     const ulong LeakThreshold = 256UL << 20;
 
-    ListView _procList = null!; Panel _histPanel = null!, _procPanel = null!, _logPanel = null!; ListBox _log = null!; Label _procNote = null!; Panel _extPanel = null!; Button _extBtn = null!; Label _extInfo = null!; CheckBox _extAuto = null!; readonly ExtremeMode Extreme = new(); CheckBox _extProfiles = null!;
+    ListView _procList = null!; Panel _histPanel = null!, _procPanel = null!, _logPanel = null!; ListBox _log = null!; Label _procNote = null!; Panel _extPanel = null!; Button _extBtn = null!; Label _extInfo = null!; CheckBox _extAuto = null!; readonly ExtremeMode Extreme = new();
     readonly List<Button> _procButtons = new(); Button _exportBtn = null!;
     readonly Queue<(DateTime t, double pct)> Hist = new();
     readonly Dictionary<int, Queue<(DateTime t, ulong bytes)>> ProcHist = new();
@@ -201,11 +201,7 @@ public sealed partial class MainForm
         _extInfo = new Label { Location = new Point(186, 14), Size = new Size(397, 16), ForeColor = Color.FromArgb(170, 170, 170), Font = new Font(Font.FontFamily, 7.5f), AutoEllipsis = true };
         _extAuto = new CheckBox { Location = new Point(186, 16), Anchor = AnchorStyles.Top | AnchorStyles.Left, AutoSize = true, ForeColor = Fg, Checked = S.ExtremeAutoFullscreen, Font = new Font(Font.FontFamily, 7.5f) };
         _extAuto.CheckedChanged += (_, _) => { S.ExtremeAutoFullscreen = _extAuto.Checked; S.Save(); };
-        var extProfiles = new CheckBox { Location = new Point(362, 34), AutoSize = false, Width = 220, ForeColor = Fg, Checked = S.ExtremeKeepUser, Font = new Font(Font.FontFamily, 7.5f) };
-        extProfiles.CheckedChanged += (_, _) => { S.ExtremeKeepUser = extProfiles.Checked; S.Save(); };
-        _extProfiles = extProfiles;
-
-        _extPanel.Controls.AddRange(new Control[] { _extBtn, _extInfo, _extAuto, extProfiles });
+        _extPanel.Controls.AddRange(new Control[] { _extBtn, _extInfo, _extAuto });
         ApplyExtremeTexts();
         Shown += (_, _) => RestoreExtreme();
     }
@@ -216,8 +212,6 @@ public sealed partial class MainForm
         foreach (Control c in _extPanel.Controls) if (c is Label l && l.Tag is string k) l.Text = L.T(k);
         _extBtn.Text = L.T(Extreme.Active ? "extremeExit" : "extremeEnter");
         _extAuto.Location = new Point(186, 34); _extAuto.AutoSize = false; _extAuto.Width = 170; _extAuto.Text = L.T("extremeAuto");
-        _extProfiles.Location = new Point(362, 34);
-        _extProfiles.Text = L.T("extremeKeepUser"); _extProfiles.Visible = !Extreme.Active;
         _extAuto.Visible = !Extreme.Active;
         _extInfo.Size = Extreme.Active ? new Size(397, 30) : new Size(397, 14);
         _extInfo.Text = Extreme.Active ? L.T("extremeOn", Extreme.Current!.GameName, Extreme.Current.Closed.Count) : L.T("extremeIdle");
@@ -242,6 +236,11 @@ public sealed partial class MainForm
         var sel = Selected();
         if (sel != null && !GpuCleaner.IsProtected(sel.Name)) game = (sel.Pid, sel.Name);
         game ??= ExtremeMode.ForegroundFullscreen();
+        game ??= Mon.Processes()
+            .Where(p => !GpuCleaner.IsProtected(p.Name))
+            .OrderByDescending(p => p.Dedicated)
+            .Select(p => ((int pid, string name)?)(p.Pid, p.Name))
+            .FirstOrDefault();
         if (game == null) { MessageBox.Show(this, L.T("extremeNoGame"), Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
         if (MessageBox.Show(this, L.T("extremeConfirm", game.Value.name), Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
         await EnterExtreme(game.Value.pid, game.Value.name);
@@ -251,7 +250,7 @@ public sealed partial class MainForm
     {
         _extBtn.Enabled = false;
         var log = new List<string>();
-        var st = await Task.Run(() => Extreme.Enter(pid, name, Mon, S.ExcludedProcesses, log, S.ExtremeKeepUser));
+        var st = await Task.Run(() => Extreme.Enter(pid, name, Mon, S.ExcludedProcesses, log));
         _extBtn.Enabled = true;
         AddLog(L.T("logExtremeOn", st.Closed.Count, name));
         foreach (var l in log) AddLog("  " + l);

@@ -10,9 +10,8 @@ public sealed class ExtremeMode
         "explorer", "AmdVramCleaner", "RadeonSoftware", "AMDRSServ", "AMDRSSrcExt", "amdow", "atieclxx", "atiesrxx", "AMDLinkUpdate",
         "steam", "steamwebhelper", "steamservice", "EpicGamesLauncher", "EpicWebHelper", "Battle.net", "Agent", "GalaxyClient", "GalaxyClientService",
         "EADesktop", "EABackgroundService", "RiotClientServices", "RiotClientUx", "UbisoftConnect", "upc", "UplayWebCore", "PlayniteUI", "Playnite",
-        "EasyAntiCheat", "EasyAntiCheat_EOS", "BEService", "vgtray", "vgc", "FACEIT", "RzSynapse", "Discord", "SignalRgb", "SignalRgbLauncher",
-        "LGHUB", "lghub_agent", "lghub_updater", "iCUE", "Corsair.Service", "GameBar", "GameBarFTServer", "GamingServices", "GamingServicesNet",
-        "wallpaper64", "wallpaper32", "obs64", "obs32",
+        "EasyAntiCheat", "EasyAntiCheat_EOS", "BEService", "vgtray", "vgc", "FACEIT",
+        "GameBar", "GameBarFTServer", "GamingServices", "GamingServicesNet",
     };
     public static readonly string StateFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AmdVramCleaner", "extreme-session.json");
 
@@ -38,12 +37,7 @@ public sealed class ExtremeMode
         try { using var p = Process.GetProcessById((int)pid); return GpuCleaner.IsProtected(p.ProcessName) || Keep.Contains(p.ProcessName) ? null : ((int)pid, p.ProcessName); } catch { return null; }
     }
 
-    static readonly HashSet<string> KeepUser = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Discord", "msedge", "brave", "chrome", "firefox", "opera", "vivaldi", "Spotify", "WhatsApp", "Telegram", "SignalRgb", "SignalRgbLauncher",
-        "LGHUB", "lghub_agent", "lghub_updater", "iCUE", "Corsair.Service", "RzSynapse", "notepad",
-    };
-    public State Enter(int gamePid, string gameName, GpuMonitor mon, IEnumerable<string> excluded, List<string> log, bool keepUserApps = false)
+    public State Enter(int gamePid, string gameName, GpuMonitor mon, IEnumerable<string> excluded, List<string> log)
     {
         var st = new State { GamePid = gamePid, GameName = gameName };
         string windir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
@@ -51,15 +45,19 @@ public sealed class ExtremeMode
         var gpuPids = mon.Processes().Select(p => p.Pid).ToHashSet();
         var ex = new HashSet<string>(excluded, StringComparer.OrdinalIgnoreCase);
         var victims = new List<Process>();
+        var skip = new Dictionary<string, int>(); void Skip(string why) => skip[why] = skip.TryGetValue(why, out var c) ? c + 1 : 1;
+        int scanned = 0;
         foreach (var p in Process.GetProcesses())
         {
+            scanned++;
             try
             {
-                if (p.Id == me || p.Id == gamePid || p.Id <= 4 || p.SessionId != session) continue;
-                if (GpuCleaner.IsProtected(p.ProcessName) || Keep.Contains(p.ProcessName) || (keepUserApps && KeepUser.Contains(p.ProcessName)) || ex.Contains(p.ProcessName)) continue;
-                if (p.MainWindowHandle == IntPtr.Zero && !gpuPids.Contains(p.Id)) continue;
-                string path = p.MainModule?.FileName ?? "";
-                if (path.Length == 0 || path.StartsWith(windir, StringComparison.OrdinalIgnoreCase)) continue;
+                if (p.Id == me || p.Id == gamePid || p.Id <= 4 || p.SessionId != session) { Skip("system/other-session"); continue; }
+                if (GpuCleaner.IsProtected(p.ProcessName) || Keep.Contains(p.ProcessName) || ex.Contains(p.ProcessName)) { Skip("protected"); continue; }
+                bool hasWindow = false; try { hasWindow = p.MainWindowHandle != IntPtr.Zero; } catch { }
+                if (!hasWindow && !gpuPids.Contains(p.Id)) { Skip("no-window/no-vram"); continue; }
+                string path = ""; try { path = p.MainModule?.FileName ?? ""; } catch { Skip("access-denied"); continue; }
+                if (path.Length == 0 || path.StartsWith(windir, StringComparison.OrdinalIgnoreCase)) { Skip("system-path"); continue; }
                 try { if (Process.GetProcessById(gamePid).MainModule?.FileName is string gp && Path.GetDirectoryName(gp) is string gd && path.StartsWith(gd, StringComparison.OrdinalIgnoreCase)) continue; } catch { }
                 if (!st.Closed.Any(c => c.Path.Equals(path, StringComparison.OrdinalIgnoreCase))) st.Closed.Add(new ClosedApp(p.ProcessName, path, p.StartInfo.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries)));
                 victims.Add(p);
@@ -67,6 +65,8 @@ public sealed class ExtremeMode
             catch { }
         }
         foreach (var p in victims) { try { p.CloseMainWindow(); } catch { } }
+        log.Add($"extreme scan: {scanned} procesos, {victims.Count} a cerrar (" +
+                string.Join(", ", skip.Select(kv => $"{kv.Key}={kv.Value}")) + ")");
         var sw = Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < 5000 && victims.Any(p => { try { return !p.HasExited; } catch { return false; } })) Thread.Sleep(200);
         foreach (var p in victims) { try { if (!p.HasExited) p.Kill(true); log.Add($"closed {p.ProcessName}"); } catch { } p.Dispose(); }
