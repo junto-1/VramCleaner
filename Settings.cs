@@ -25,6 +25,9 @@ public sealed class Settings
     public bool AreaRestartDriver { get; set; }
     public bool AreaRestartDwm { get; set; } = true;
     public bool ExtremeAutoFullscreen { get; set; }
+    public bool ExtremeKeepUser { get; set; } = true;
+    public bool VramAlert { get; set; }
+    public int OptimizeDelaySeconds { get; set; } = 10;
     public int DwmRestartMinMb { get; set; } = 1024;
 
     public bool HotkeyEnabled { get; set; }

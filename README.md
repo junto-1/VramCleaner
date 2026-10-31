@@ -59,3 +59,11 @@ Pensado para jugar: cierra todas las aplicaciones de usuario y deja solo el jueg
 - **Activar solo al detectar un juego a pantalla completa**: entra solo cuando la ventana en primer plano ocupa toda la pantalla y usa VRAM.
 - Botón **Salir del modo Extremo** para reabrir todo sin esperar a que el juego cierre.
 - El reinicio de dwm se omite mientras el modo Extremo está activo o hay un juego a pantalla completa (reiniciar el compositor bajo un juego puede dejar el cursor invisible hasta hacer Alt+Tab); tras cualquier reinicio de dwm se mueve el ratón un píxel para redibujar el cursor.
+
+### 1.3.1
+- Tercera barra: **RAM del sistema** (`GlobalMemoryStatusEx`).
+- **Aviso de VRAM al nivel de peligro**: notificación única cuando la VRAM dedicada supera el nivel de peligro (se rearma al bajar del nivel de aviso). Casilla dentro de *Optimización automática*.
+- **Optimizar en 10 s** en el menú de bandeja: deja tiempo para volver al juego a pantalla completa.
+- El modo Extremo recuerda los **argumentos de línea de comandos** de las apps al reabrirlas.
+- Casilla **Mantener Discord, OBS y navegador**: al desmarcarla, el modo Extremo también cierra navegadores, Discord, OBS, chat y software de periféricos.
+- Ventana redimensionable (el botón Optimizar se ancla abajo) y panel del modo Extremo corregido (textos dentro del marco).

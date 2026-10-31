@@ -12,11 +12,11 @@ public sealed class ExtremeMode
         "EADesktop", "EABackgroundService", "RiotClientServices", "RiotClientUx", "UbisoftConnect", "upc", "UplayWebCore", "PlayniteUI", "Playnite",
         "EasyAntiCheat", "EasyAntiCheat_EOS", "BEService", "vgtray", "vgc", "FACEIT", "RzSynapse", "Discord", "SignalRgb", "SignalRgbLauncher",
         "LGHUB", "lghub_agent", "lghub_updater", "iCUE", "Corsair.Service", "GameBar", "GameBarFTServer", "GamingServices", "GamingServicesNet",
-        "obs64", "obs32", "wallpaper64", "wallpaper32",
+        "wallpaper64", "wallpaper32", "obs64", "obs32",
     };
     public static readonly string StateFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AmdVramCleaner", "extreme-session.json");
 
-    public sealed record ClosedApp(string Name, string Path);
+    public sealed record ClosedApp(string Name, string Path, string[] Args);
     public sealed class State { public int GamePid; public string GameName = ""; public List<ClosedApp> Closed = new(); public DateTime Started = DateTime.Now; }
 
     public State? Current { get; private set; }
@@ -38,7 +38,12 @@ public sealed class ExtremeMode
         try { using var p = Process.GetProcessById((int)pid); return GpuCleaner.IsProtected(p.ProcessName) || Keep.Contains(p.ProcessName) ? null : ((int)pid, p.ProcessName); } catch { return null; }
     }
 
-    public State Enter(int gamePid, string gameName, GpuMonitor mon, IEnumerable<string> excluded, List<string> log)
+    static readonly HashSet<string> KeepUser = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Discord", "msedge", "brave", "chrome", "firefox", "opera", "vivaldi", "Spotify", "WhatsApp", "Telegram", "SignalRgb", "SignalRgbLauncher",
+        "LGHUB", "lghub_agent", "lghub_updater", "iCUE", "Corsair.Service", "RzSynapse", "notepad",
+    };
+    public State Enter(int gamePid, string gameName, GpuMonitor mon, IEnumerable<string> excluded, List<string> log, bool keepUserApps = true)
     {
         var st = new State { GamePid = gamePid, GameName = gameName };
         string windir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
@@ -51,12 +56,12 @@ public sealed class ExtremeMode
             try
             {
                 if (p.Id == me || p.Id == gamePid || p.Id <= 4 || p.SessionId != session) continue;
-                if (GpuCleaner.IsProtected(p.ProcessName) || Keep.Contains(p.ProcessName) || ex.Contains(p.ProcessName)) continue;
+                if (GpuCleaner.IsProtected(p.ProcessName) || Keep.Contains(p.ProcessName) || (keepUserApps && KeepUser.Contains(p.ProcessName)) || ex.Contains(p.ProcessName)) continue;
                 if (p.MainWindowHandle == IntPtr.Zero && !gpuPids.Contains(p.Id)) continue;
                 string path = p.MainModule?.FileName ?? "";
                 if (path.Length == 0 || path.StartsWith(windir, StringComparison.OrdinalIgnoreCase)) continue;
                 try { if (Process.GetProcessById(gamePid).MainModule?.FileName is string gp && Path.GetDirectoryName(gp) is string gd && path.StartsWith(gd, StringComparison.OrdinalIgnoreCase)) continue; } catch { }
-                if (!st.Closed.Any(c => c.Path.Equals(path, StringComparison.OrdinalIgnoreCase))) st.Closed.Add(new ClosedApp(p.ProcessName, path));
+                if (!st.Closed.Any(c => c.Path.Equals(path, StringComparison.OrdinalIgnoreCase))) st.Closed.Add(new ClosedApp(p.ProcessName, path, p.StartInfo.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries)));
                 victims.Add(p);
             }
             catch { }
@@ -86,7 +91,7 @@ public sealed class ExtremeMode
             try
             {
                 if (Process.GetProcessesByName(a.Name).Length > 0) continue;
-                Process.Start(new ProcessStartInfo(a.Path) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(a.Path) ?? "" });
+                Process.Start(new ProcessStartInfo(a.Path) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(a.Path) ?? "", Arguments = string.Join(" ", a.Args) });
                 log.Add($"relaunched {a.Name}");
             }
             catch (Exception e) { log.Add($"relaunch failed {a.Name}: {e.Message}"); }

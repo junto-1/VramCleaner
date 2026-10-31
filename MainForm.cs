@@ -20,7 +20,7 @@ public sealed partial class MainForm : Form
     DateTime LastAuto = DateTime.Now, OptimizedUntil = DateTime.MinValue;
     bool Busy, ReallyExit;
 
-    Panel _vramPanel = null!, _sharedPanel = null!; Label _gpuLabel = null!; Button _optBtn = null!;
+    Panel _vramPanel = null!, _ramPanel = null!, _sharedPanel = null!; bool _alertFired; Label _gpuLabel = null!; Button _optBtn = null!;
     ListBox _excluded = null!; ComboBox _procCombo = null!, _langCombo = null!, _modCombo = null!, _keyCombo = null!;
     TrackBar _everyBar = null!, _belowBar = null!; Label _everyLbl = null!, _belowLbl = null!;
 
@@ -31,7 +31,7 @@ public sealed partial class MainForm : Form
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         BackColor = Bg; ForeColor = Fg; Font = new Font("Segoe UI", 9f);
         FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false; StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(930, 800); TopMost = S.AlwaysOnTop;
+        ClientSize = new Size(930, 896); MinimumSize = new Size(930, 896); TopMost = S.AlwaysOnTop;
         Build();
         ApplyTexts();
         SetupTray();
@@ -107,7 +107,9 @@ public sealed partial class MainForm : Form
         Check(cfg, y, "startMin", () => S.StartMinimized, v => S.StartMinimized = v); y += 24;
         Check(cfg, y, "showShared", () => S.ShowSharedMemory, v => { S.ShowSharedMemory = v; _sharedPanel.Visible = v; }); y += 24;
         Check(cfg, y, "notify", () => S.ShowNotifications, v => S.ShowNotifications = v); y += 24;
-        Check(cfg, y, "onTop", () => S.AlwaysOnTop, v => { S.AlwaysOnTop = v; TopMost = v; });
+
+        Check(cfg, y, "onTop", () => S.AlwaysOnTop, v => { S.AlwaysOnTop = v; TopMost = v; }); y += 24;
+        cfg.Height = Math.Max(cfg.Height, y + 8);
 
         // ---- Areas ----
         var areas = Panel_(12, 278, 255, 182);
@@ -167,23 +169,26 @@ public sealed partial class MainForm : Form
         ex.Controls.Add(add);
 
         // ---- Auto optimization ----
-        var auto = Panel_(280, 428, 323, 120);
+        var auto = Panel_(280, 428, 323, 144);
         Title(auto, "auto");
         _everyLbl = Lbl(auto, 8, 26, "");
         _everyBar = Slider(auto, 50, 0, 24, S.AutoEveryHours, v => { S.AutoEveryHours = v; LastAuto = DateTime.Now; UpdateAutoLabels(); });
-        _belowLbl = Lbl(auto, 8, 76, "");
-        _belowBar = Slider(auto, 100, 0, 90, S.AutoWhenFreeBelow, v => { S.AutoWhenFreeBelow = v; UpdateAutoLabels(); });
+        _belowLbl = Lbl(auto, 8, 74, "");
+        _belowBar = Slider(auto, 96, 0, 90, S.AutoWhenFreeBelow, v => { S.AutoWhenFreeBelow = v; UpdateAutoLabels(); });
+        Check(auto, 118, "vramAlert", () => S.VramAlert, v => S.VramAlert = v, 8);
         UpdateAutoLabels();
 
         // ---- Memory bars ----
-        _vramPanel = Panel_(12, 556, 591, 70); _vramPanel.Paint += (_, e) => PaintBar(e.Graphics, _vramPanel, Last.DedicatedUsed, Last.DedicatedTotal);
-        _sharedPanel = Panel_(12, 632, 591, 70); _sharedPanel.Paint += (_, e) => PaintBar(e.Graphics, _sharedPanel, Last.SharedUsed, Last.SharedTotal);
+        _vramPanel = Panel_(12, 556, 591, 64); _vramPanel.Paint += (_, e) => PaintBar(e.Graphics, _vramPanel, Last.DedicatedUsed, Last.DedicatedTotal);
+        _ramPanel = Panel_(12, 626, 591, 58); _ramPanel.Paint += (_, e) => PaintBar(e.Graphics, _ramPanel, (ulong)Math.Max(0, LastRam.used), (ulong)Math.Max(1, LastRam.total));
+        _sharedPanel = Panel_(12, 688, 591, 58); _sharedPanel.Paint += (_, e) => PaintBar(e.Graphics, _sharedPanel, Last.SharedUsed, Last.SharedTotal);
         _sharedPanel.Visible = S.ShowSharedMemory;
-        _gpuLabel = new Label { Location = new Point(12, 706), AutoSize = true, ForeColor = Dim, Font = new Font("Segoe UI", 8f) };
+        _gpuLabel = new Label { Location = new Point(12, 778), AutoSize = true, ForeColor = Dim, Font = new Font("Segoe UI", 8f) };
         Controls.Add(_gpuLabel);
 
-        _optBtn = new Button { Location = new Point(12, 772), Size = new Size(591, 26), FlatStyle = FlatStyle.Flat, ForeColor = Accent, BackColor = PanelBg, Cursor = Cursors.Hand };
+        _optBtn = new Button { Location = new Point(12, 858), Size = new Size(591, 26), FlatStyle = FlatStyle.Flat, ForeColor = Accent, BackColor = PanelBg, Cursor = Cursors.Hand };
         _optBtn.FlatAppearance.BorderSize = 0;
+        _optBtn.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
         _optBtn.Click += (_, _) => Optimize(false);
         Texts.Add((_optBtn, "optimize"));
         Controls.Add(_optBtn);
@@ -237,7 +242,7 @@ public sealed partial class MainForm : Form
     void PaintBar(Graphics g, Panel p, ulong used, ulong total)
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        string title = L.T(p == _vramPanel ? "vram" : "shared", GpuMonitor.Format(total));
+        string title = L.T(p == _vramPanel ? "vram" : p == _ramPanel ? "ram" : "shared", GpuMonitor.Format(total));
         using var titleFont = new Font("Segoe UI Semibold", 8.5f);
         g.DrawString(title, titleFont, Brushes.Gainsboro, 8, 6);
         var rect = new Rectangle(10, 30, p.Width - 20, 6);
@@ -260,6 +265,10 @@ public sealed partial class MainForm : Form
         if (Busy) return;
         Last = Mon.Sample();
         TrackHistory(); ExtremeTick();
+        LastRam = Native.RamUsage(); _ramPanel.Invalidate();
+        if (S.VramAlert && !_alertFired && Last.DedicatedTotal > 0 && Last.DedicatedPercent >= S.DangerLevel)
+        { _alertFired = true; if (S.ShowNotifications) Tray.ShowBalloonTip(4000, L.T("vramAlertTitle"), L.T("vramAlertBody", Last.DedicatedPercent), ToolTipIcon.Warning); }
+        else if (Last.DedicatedPercent < S.WarningLevel) _alertFired = false;
         _vramPanel.Invalidate(); _sharedPanel.Invalidate();
         UpdateTrayIcon();
         Tray.Text = $"VRAM {GpuMonitor.Format(Last.DedicatedUsed)} / {GpuMonitor.Format(Last.DedicatedTotal)} ({Last.DedicatedPercent:0}%)";
@@ -307,6 +316,7 @@ public sealed partial class MainForm : Form
     {
         var m = new ContextMenuStrip { BackColor = PanelBg, ForeColor = Fg, RenderMode = ToolStripRenderMode.System };
         m.Items.Add(L.T("optimize"), null, (_, _) => Optimize(false));
+        m.Items.Add(L.T("optimizeDelay"), null, (_, _) => OptimizeDelayed());
         m.Items.Add(L.T(Extreme.Active ? "extremeExit" : "extremeEnter"), null, (_, _) => ToggleExtreme());
         m.Items.Add(L.T("show"), null, (_, _) => ShowWindow());
         m.Items.Add(new ToolStripSeparator());
