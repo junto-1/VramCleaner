@@ -41,7 +41,7 @@ public sealed class ExtremeMode
     {
         var st = new State { GamePid = gamePid, GameName = gameName };
         string windir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-        int me = Environment.ProcessId, session = Process.GetCurrentProcess().SessionId;
+        int me = Environment.ProcessId;
         var gpuPids = mon.Processes().Select(p => p.Pid).ToHashSet();
         var ex = new HashSet<string>(excluded, StringComparer.OrdinalIgnoreCase);
         var victims = new List<Process>();
@@ -52,17 +52,19 @@ public sealed class ExtremeMode
             scanned++;
             try
             {
-                if (p.Id == me || p.Id == gamePid || p.Id <= 4 || p.SessionId != session) { Skip("system/other-session"); continue; }
-                if (GpuCleaner.IsProtected(p.ProcessName) || Keep.Contains(p.ProcessName) || ex.Contains(p.ProcessName)) { Skip("protected"); continue; }
+                if (p.Id == me || p.Id == gamePid || p.Id <= 4) { Skip("self/game"); continue; }
+                string name; try { name = p.ProcessName; } catch { Skip("name-error"); continue; }
+                if (GpuCleaner.IsProtected(name) || Keep.Contains(name) || ex.Contains(name)) { Skip("protected"); continue; }
                 bool hasWindow = false; try { hasWindow = p.MainWindowHandle != IntPtr.Zero; } catch { }
                 if (!hasWindow && !gpuPids.Contains(p.Id)) { Skip("no-window/no-vram"); continue; }
                 string path = ""; try { path = p.MainModule?.FileName ?? ""; } catch { Skip("access-denied"); continue; }
                 if (path.Length == 0 || path.StartsWith(windir, StringComparison.OrdinalIgnoreCase)) { Skip("system-path"); continue; }
-                try { if (Process.GetProcessById(gamePid).MainModule?.FileName is string gp && Path.GetDirectoryName(gp) is string gd && path.StartsWith(gd, StringComparison.OrdinalIgnoreCase)) continue; } catch { }
-                if (!st.Closed.Any(c => c.Path.Equals(path, StringComparison.OrdinalIgnoreCase))) st.Closed.Add(new ClosedApp(p.ProcessName, path, p.StartInfo.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries)));
+                try { if (Process.GetProcessById(gamePid).MainModule?.FileName is string gp && Path.GetDirectoryName(gp) is string gd && path.StartsWith(gd, StringComparison.OrdinalIgnoreCase)) { Skip("game-dir"); continue; } } catch { }
+                string[] args; try { args = p.StartInfo.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries); } catch { args = Array.Empty<string>(); }
+                if (!st.Closed.Any(c => c.Path.Equals(path, StringComparison.OrdinalIgnoreCase))) st.Closed.Add(new ClosedApp(name, path, args));
                 victims.Add(p);
             }
-            catch { }
+            catch { Skip("error"); }
         }
         foreach (var p in victims) { try { p.CloseMainWindow(); } catch { } }
         log.Add($"extreme scan: {scanned} procesos, {victims.Count} a cerrar (" +
