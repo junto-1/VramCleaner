@@ -33,6 +33,8 @@ static class Native
 
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
+    public static void NudgeMouse() { try { mouse_event(0x0001, 1, 0, 0, UIntPtr.Zero); Thread.Sleep(30); mouse_event(0x0001, -1, 0, 0, UIntPtr.Zero); } catch { } }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
 

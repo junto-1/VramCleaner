@@ -58,3 +58,4 @@ Pensado para jugar: cierra todas las aplicaciones de usuario y deja solo el jueg
 - Tras cerrar ejecuta una optimización normal. La lista de apps cerradas se guarda en `%APPDATA%\AmdVramCleaner\extreme-session.json`; si el limpiador se cerrara en medio, al abrirlo de nuevo pregunta si reabrirlas.
 - **Activar solo al detectar un juego a pantalla completa**: entra solo cuando la ventana en primer plano ocupa toda la pantalla y usa VRAM.
 - Botón **Salir del modo Extremo** para reabrir todo sin esperar a que el juego cierre.
+- El reinicio de dwm se omite mientras el modo Extremo está activo o hay un juego a pantalla completa (reiniciar el compositor bajo un juego puede dejar el cursor invisible hasta hacer Alt+Tab); tras cualquier reinicio de dwm se mueve el ratón un píxel para redibujar el cursor.

@@ -370,7 +370,7 @@ public sealed partial class MainForm : Form
         {
             VramPressure = S.AreaVramPressure, TrimWorkingSets = S.AreaTrimWorkingSets, ShaderCache = S.AreaShaderCache,
             StandbyList = S.AreaStandbyList, FileCache = S.AreaFileCache, RestartDriver = S.AreaRestartDriver && !automatic,
-            RestartDwm = S.AreaRestartDwm, DwmMinBytes = (ulong)S.DwmRestartMinMb << 20,
+            RestartDwm = S.AreaRestartDwm && !Extreme.Active && ExtremeMode.ForegroundFullscreen() == null, DwmMinBytes = (ulong)S.DwmRestartMinMb << 20,
             Excluded = new HashSet<string>(S.ExcludedProcesses, StringComparer.OrdinalIgnoreCase),
         };
         CleanResult r;

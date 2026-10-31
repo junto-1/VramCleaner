@@ -44,7 +44,7 @@ static class Cli
                     VramPressure = s.AreaVramPressure && !set.Contains("--no-pressure"), TrimWorkingSets = true,
                     ShaderCache = s.AreaShaderCache || set.Contains("--shaders"), StandbyList = s.AreaStandbyList, FileCache = s.AreaFileCache,
                     RestartDriver = set.Contains("--driver"),
-                    RestartDwm = (s.AreaRestartDwm || set.Contains("--dwm")) && !set.Contains("--no-dwm"), DwmMinBytes = set.Contains("--dwm") ? 0 : (ulong)s.DwmRestartMinMb << 20,
+                    RestartDwm = (s.AreaRestartDwm || set.Contains("--dwm")) && !set.Contains("--no-dwm") && (set.Contains("--dwm") || ExtremeMode.ForegroundFullscreen() == null), DwmMinBytes = set.Contains("--dwm") ? 0 : (ulong)s.DwmRestartMinMb << 20,
                     Excluded = new HashSet<string>(s.ExcludedProcesses.Concat((Arg("--exclude") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)), StringComparer.OrdinalIgnoreCase),
                 };
                 if (set.Contains("--dry-run")) { Console.WriteLine(L.T("dryRunTitle")); foreach (var l in GpuCleaner.Plan(mon, o)) Console.WriteLine(l); }

@@ -189,6 +189,7 @@ public static class GpuCleaner
             if (Process.GetProcessesByName("dwm").Any(p => !oldIds.Contains(p.Id))) { back = true; break; }
         }
         Thread.Sleep(1500);
+        Native.NudgeMouse();
         ulong after = DwmUsage(monitor);
         log.Add(back ? $"dwm restarted: {GpuMonitor.Format(before)} -> {GpuMonitor.Format(after)}" : "dwm did not come back within 10 s");
         return (back, before, after);
