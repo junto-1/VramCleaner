@@ -12,6 +12,7 @@ public sealed class ExtremeMode
         "EADesktop", "EABackgroundService", "RiotClientServices", "RiotClientUx", "UbisoftConnect", "upc", "UplayWebCore", "PlayniteUI", "Playnite",
         "EasyAntiCheat", "EasyAntiCheat_EOS", "BEService", "vgtray", "vgc", "FACEIT",
         "GameBar", "GameBarFTServer", "GamingServices", "GamingServicesNet",
+        "LosslessScaling",
     };
     public static readonly string StateFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AmdVramCleaner", "extreme-session.json");
 
