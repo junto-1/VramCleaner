@@ -7,7 +7,8 @@ namespace AmdVramCleaner;
 
 public sealed class CleanOptions
 {
-    public bool VramPressure, TrimWorkingSets, ShaderCache, StandbyList, RestartDriver;
+    public bool VramPressure, TrimWorkingSets, ShaderCache, StandbyList, FileCache, RestartDriver, RestartDwm;
+    public ulong DwmMinBytes = 1UL << 30;
     public HashSet<string> Excluded = new(StringComparer.OrdinalIgnoreCase);
 }
 
@@ -16,6 +17,7 @@ public sealed class CleanResult
     public GpuSample Before = new(0, 0, 0, 0), After = new(0, 0, 0, 0);
     public ulong Pressured, ShaderBytes;
     public int TrimmedProcesses;
+    public ulong DwmBefore, DwmAfter; public bool DwmRestarted;
     public List<string> Log = new();
     public long FreedBytes => (long)Before.DedicatedUsed - (long)After.DedicatedUsed;
 }
@@ -29,8 +31,10 @@ public static class GpuCleaner
     {
         var r = new CleanResult { Before = monitor.Sample() };
         if (o.TrimWorkingSets) Try(r, "working set", () => r.TrimmedProcesses = TrimWorkingSets(monitor, o.Excluded));
+        if (o.RestartDwm) Try(r, "dwm restart", () => (r.DwmRestarted, r.DwmBefore, r.DwmAfter) = RestartDwm(monitor, o.DwmMinBytes, r.Log));
         if (o.ShaderCache) Try(r, "shader cache", () => r.ShaderBytes = ClearShaderCaches());
         if (o.StandbyList) Try(r, "standby list", PurgeStandbyList);
+        if (o.FileCache) Try(r, "file cache", FlushFileCache);
         if (o.VramPressure && monitor.Gpu != null) Try(r, "vram pressure", () => r.Pressured = ForceEviction(monitor.Gpu, r.Log));
         if (o.RestartDriver) Try(r, "driver restart", RestartGraphicsDriver);
         Thread.Sleep(700);
@@ -95,7 +99,7 @@ public static class GpuCleaner
         int me = Environment.ProcessId, count = 0;
         foreach (var p in monitor.Processes())
         {
-            if (p.Pid == me || p.Pid <= 4 || Protected.Contains(p.Name) || excluded.Contains(p.Name)) continue;
+            if (p.Pid == me || p.Pid <= 4 || (Protected.Contains(p.Name) && !IsCompositor(p.Name)) || excluded.Contains(p.Name)) continue;
             var h = Native.OpenProcess(Native.PROCESS_QUERY_INFORMATION | Native.PROCESS_SET_QUOTA, false, p.Pid);
             if (h == IntPtr.Zero) continue;
             try { if (Native.EmptyWorkingSet(h)) count++; }
@@ -126,6 +130,93 @@ public static class GpuCleaner
             }
         }
         return freed;
+    }
+
+    // Dry run: describes what Run() would do without touching anything.
+    public static List<string> Plan(GpuMonitor monitor, CleanOptions o)
+    {
+        var plan = new List<string>();
+        var s = monitor.Sample();
+        plan.Add($"VRAM: {GpuMonitor.Format(s.DedicatedUsed)} / {GpuMonitor.Format(s.DedicatedTotal)} ({s.DedicatedPercent:0}%)");
+        if (o.TrimWorkingSets)
+        {
+            int me = Environment.ProcessId;
+            foreach (var p in monitor.Processes())
+            {
+                string tag = p.Pid == me || p.Pid <= 4 || (Protected.Contains(p.Name) && !IsCompositor(p.Name)) ? "[protegido/protected]" : o.Excluded.Contains(p.Name) ? "[excluido/excluded]" : "-> EmptyWorkingSet";
+                plan.Add($"  {p.Name} (PID {p.Pid}) VRAM {GpuMonitor.Format(p.Dedicated)}{(IsCompositor(p.Name) ? "*" : "")} + shared {GpuMonitor.Format(p.Shared)} {tag}");
+            }
+        }
+        if (o.RestartDwm)
+        {
+            ulong dwm = DwmUsage(monitor);
+            plan.Add(dwm >= o.DwmMinBytes ? $"  dwm restart (kill dwm.exe, winlogon relaunches it): dwm VRAM {GpuMonitor.Format(dwm)}" : $"  dwm restart: skipped (dwm {GpuMonitor.Format(dwm)} < {GpuMonitor.Format(o.DwmMinBytes)})");
+        }
+        if (o.ShaderCache)
+            foreach (var d in ShaderCachePaths().Where(Directory.Exists))
+                plan.Add($"  shader cache {d}: {GpuMonitor.Format(DirSize(d))}");
+        if (o.StandbyList) plan.Add("  standby list purge (NtSetSystemInformation)");
+        if (o.FileCache) plan.Add("  system file cache flush (SetSystemFileCacheSize)");
+        if (o.VramPressure) plan.Add(monitor.Gpu == null || monitor.Gpu.DedicatedBytes == 0 ? "  VRAM pressure: skipped (no dedicated VRAM)" : $"  VRAM pressure: allocate up to {GpuMonitor.Format(monitor.Gpu.DedicatedBytes)} in 256 MB chunks, then release");
+        if (o.RestartDriver) plan.Add("  graphics driver restart (Win+Ctrl+Shift+B)");
+        return plan;
+    }
+
+    static ulong DirSize(string dir)
+    {
+        ulong n = 0;
+        try { foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)) { try { n += (ulong)new FileInfo(f).Length; } catch { } } } catch { }
+        return n;
+    }
+
+    public static bool IsCompositor(string name) => name.Equals("dwm", StringComparison.OrdinalIgnoreCase);
+
+    public static ulong DwmUsage(GpuMonitor monitor) => monitor.Processes().Where(p => IsCompositor(p.Name)).Aggregate(0UL, (a, p) => a + p.Dedicated);
+
+    public static (bool restarted, ulong before, ulong after) RestartDwm(GpuMonitor monitor, ulong minBytes, List<string> log)
+    {
+        ulong before = DwmUsage(monitor);
+        if (before < minBytes) { log.Add($"dwm restart skipped ({GpuMonitor.Format(before)} < {GpuMonitor.Format(minBytes)})"); return (false, before, before); }
+        Native.EnablePrivilege("SeDebugPrivilege");
+        var old = Process.GetProcessesByName("dwm");
+        if (old.Length == 0) { log.Add("dwm not found"); return (false, before, before); }
+        var oldIds = old.Select(p => p.Id).ToHashSet();
+        foreach (var p in old) { try { p.Kill(); } catch (Exception e) { log.Add("dwm kill failed: " + e.Message); } p.Dispose(); }
+        var sw = Stopwatch.StartNew(); bool back = false;
+        while (sw.ElapsedMilliseconds < 10000)
+        {
+            Thread.Sleep(250);
+            if (Process.GetProcessesByName("dwm").Any(p => !oldIds.Contains(p.Id))) { back = true; break; }
+        }
+        Thread.Sleep(1500);
+        ulong after = DwmUsage(monitor);
+        log.Add(back ? $"dwm restarted: {GpuMonitor.Format(before)} -> {GpuMonitor.Format(after)}" : "dwm did not come back within 10 s");
+        return (back, before, after);
+    }
+
+    public static bool IsProtected(string name) => Protected.Contains(name);
+
+    // Gentle: close main window and wait; force: Kill(). Returns true if the process is gone.
+    public static bool KillProcess(int pid, bool force, int waitMs = 3000)
+    {
+        try
+        {
+            using var p = Process.GetProcessById(pid);
+            if (!force && p.MainWindowHandle != IntPtr.Zero && p.CloseMainWindow() && p.WaitForExit(waitMs)) return true;
+            if (!force && p.MainWindowHandle == IntPtr.Zero) return false;
+            if (!force) return p.HasExited;
+            p.Kill(true);
+            return p.WaitForExit(waitMs);
+        }
+        catch (ArgumentException) { return true; }
+        catch { return false; }
+    }
+
+    static void FlushFileCache()
+    {
+        Native.EnablePrivilege("SeIncreaseQuotaPrivilege");
+        if (!Native.SetSystemFileCacheSize(new IntPtr(-1), new IntPtr(-1), 0))
+            throw new InvalidOperationException($"Win32 {System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
     }
 
     static void PurgeStandbyList()

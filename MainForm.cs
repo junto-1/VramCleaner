@@ -3,7 +3,7 @@ using System.Drawing.Drawing2D;
 
 namespace AmdVramCleaner;
 
-public sealed class MainForm : Form
+public sealed partial class MainForm : Form
 {
     static readonly Color Bg = Color.FromArgb(30, 30, 30), PanelBg = Color.FromArgb(43, 43, 43), Fg = Color.FromArgb(230, 230, 230),
         Dim = Color.FromArgb(150, 150, 150), Accent = Color.FromArgb(0, 150, 220), UsedColor = Color.FromArgb(220, 60, 50), FreeColor = Color.FromArgb(70, 200, 90);
@@ -27,11 +27,11 @@ public sealed class MainForm : Form
     public MainForm()
     {
         L.Lang = S.Language;
-        Text = "AMD VRAM Cleaner 1.0";
+        Text = "AMD VRAM Cleaner " + (Application.ProductVersion.Split('+')[0] is var v && v.Count(c => c == '.') >= 2 ? v[..v.LastIndexOf('.')] : Application.ProductVersion);
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         BackColor = Bg; ForeColor = Fg; Font = new Font("Segoe UI", 9f);
         FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false; StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(616, 750); TopMost = S.AlwaysOnTop;
+        ClientSize = new Size(930, 750); TopMost = S.AlwaysOnTop;
         Build();
         ApplyTexts();
         SetupTray();
@@ -93,7 +93,7 @@ public sealed class MainForm : Form
     void Build()
     {
         // ---- Configuration ----
-        var cfg = Panel_(12, 12, 255, 292);
+        var cfg = Panel_(12, 12, 255, 270);
         Title(cfg, "cfg");
         _langCombo = Combo(cfg, 8, 26, 160);
         _langCombo.Items.AddRange(new object[] { "Spanish (Español)", "English" });
@@ -110,16 +110,18 @@ public sealed class MainForm : Form
         Check(cfg, y, "onTop", () => S.AlwaysOnTop, v => { S.AlwaysOnTop = v; TopMost = v; });
 
         // ---- Areas ----
-        var areas = Panel_(12, 312, 255, 160);
-        Title(areas, "areas"); y = 28;
-        Check(areas, y, "areaVram", () => S.AreaVramPressure, v => S.AreaVramPressure = v); y += 24;
-        Check(areas, y, "areaWs", () => S.AreaTrimWorkingSets, v => S.AreaTrimWorkingSets = v); y += 24;
-        Check(areas, y, "areaShader", () => S.AreaShaderCache, v => S.AreaShaderCache = v); y += 24;
-        Check(areas, y, "areaStandby", () => S.AreaStandbyList, v => S.AreaStandbyList = v); y += 24;
+        var areas = Panel_(12, 278, 255, 182);
+        Title(areas, "areas"); y = 26;
+        Check(areas, y, "areaVram", () => S.AreaVramPressure, v => S.AreaVramPressure = v); y += 22;
+        Check(areas, y, "areaWs", () => S.AreaTrimWorkingSets, v => S.AreaTrimWorkingSets = v); y += 22;
+        Check(areas, y, "areaShader", () => S.AreaShaderCache, v => S.AreaShaderCache = v); y += 22;
+        Check(areas, y, "areaStandby", () => S.AreaStandbyList, v => S.AreaStandbyList = v); y += 22;
+        Check(areas, y, "areaFileCache", () => S.AreaFileCache, v => S.AreaFileCache = v); y += 22;
+        Check(areas, y, "areaDwm", () => S.AreaRestartDwm, v => S.AreaRestartDwm = v); y += 22;
         Check(areas, y, "areaDriver", () => S.AreaRestartDriver, v => S.AreaRestartDriver = v);
 
         // ---- Hotkey ----
-        var hk = Panel_(12, 480, 255, 68);
+        var hk = Panel_(12, 468, 255, 68);
         Title(hk, "hotkey");
         var hkCheck = Check(hk, 32, "", () => S.HotkeyEnabled, v => { S.HotkeyEnabled = v; ApplyHotkey(); }); hkCheck.Text = "";
         _modCombo = Combo(hk, 30, 29, 110); _modCombo.Items.AddRange(ModifierNames); _modCombo.SelectedIndex = Math.Clamp(S.HotkeyModifiers, 0, ModifierNames.Length - 1);
@@ -185,6 +187,7 @@ public sealed class MainForm : Form
         _optBtn.Click += (_, _) => Optimize(false);
         Texts.Add((_optBtn, "optimize"));
         Controls.Add(_optBtn);
+        BuildExtras();
     }
 
     void Level(Control parent, int x, int y, Func<int> get, Action<int> set)
@@ -216,6 +219,7 @@ public sealed class MainForm : Form
             c.Text = L.T(key);
         }
         UpdateAutoLabels();
+        ApplyExtraTexts();
         if (Mon.Gpu == null) _gpuLabel.Text = L.T("noGpu");
         else _gpuLabel.Text = L.T("gpu", Mon.Gpu.Name, Mon.DriverVersion == "" ? "?" : Mon.DriverVersion) + (Mon.Gpu.IsAmd ? "" : "   [" + L.T("notAmd", Mon.Gpu.Name) + "]");
         Tray.ContextMenuStrip = BuildTrayMenu();
@@ -255,6 +259,7 @@ public sealed class MainForm : Form
     {
         if (Busy) return;
         Last = Mon.Sample();
+        TrackHistory();
         _vramPanel.Invalidate(); _sharedPanel.Invalidate();
         UpdateTrayIcon();
         Tray.Text = $"VRAM {GpuMonitor.Format(Last.DedicatedUsed)} / {GpuMonitor.Format(Last.DedicatedTotal)} ({Last.DedicatedPercent:0}%)";
@@ -363,7 +368,8 @@ public sealed class MainForm : Form
         var opts = new CleanOptions
         {
             VramPressure = S.AreaVramPressure, TrimWorkingSets = S.AreaTrimWorkingSets, ShaderCache = S.AreaShaderCache,
-            StandbyList = S.AreaStandbyList, RestartDriver = S.AreaRestartDriver && !automatic,
+            StandbyList = S.AreaStandbyList, FileCache = S.AreaFileCache, RestartDriver = S.AreaRestartDriver && !automatic,
+            RestartDwm = S.AreaRestartDwm, DwmMinBytes = (ulong)S.DwmRestartMinMb << 20,
             Excluded = new HashSet<string>(S.ExcludedProcesses, StringComparer.OrdinalIgnoreCase),
         };
         CleanResult r;
@@ -372,6 +378,8 @@ public sealed class MainForm : Form
         Last = r.After; OptimizedUntil = DateTime.Now.AddSeconds(5);
         _vramPanel.Invalidate(); _sharedPanel.Invalidate(); UpdateTrayIcon();
         Debug.WriteLine(string.Join(" | ", r.Log));
+        if (r.DwmRestarted) AddLog(L.T("logDwm", GpuMonitor.Format(r.DwmBefore), GpuMonitor.Format(r.DwmAfter)));
+        AddLog(L.T("logDone", GpuMonitor.Format(r.Before.DedicatedUsed), GpuMonitor.Format(r.After.DedicatedUsed), (r.FreedBytes < 0 ? "-" : "") + GpuMonitor.Format((ulong)Math.Abs(r.FreedBytes)), r.TrimmedProcesses, GpuMonitor.Format(r.ShaderBytes)));
         if (S.ShowNotifications)
         {
             string freed = (r.FreedBytes < 0 ? "-" : "") + GpuMonitor.Format((ulong)Math.Abs(r.FreedBytes));

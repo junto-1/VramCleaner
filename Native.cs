@@ -24,6 +24,9 @@ static class Native
     [DllImport("advapi32.dll", SetLastError = true)] public static extern bool LookupPrivilegeValue(string? sys, string name, out LUID luid);
     [DllImport("advapi32.dll", SetLastError = true)] public static extern bool AdjustTokenPrivileges(IntPtr token, bool disableAll, ref TOKEN_PRIVILEGES newState, int len, IntPtr prev, IntPtr retLen);
     [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool SetSystemFileCacheSize(IntPtr min, IntPtr max, int flags);
+    [DllImport("kernel32.dll")] public static extern bool AttachConsole(int pid);
+    [DllImport("kernel32.dll")] public static extern bool FreeConsole();
 
     [StructLayout(LayoutKind.Sequential)] public struct LUID { public uint LowPart; public int HighPart; }
     [StructLayout(LayoutKind.Sequential)] public struct TOKEN_PRIVILEGES { public int Count; public LUID Luid; public uint Attr; }

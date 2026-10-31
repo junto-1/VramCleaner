@@ -21,7 +21,10 @@ public sealed class Settings
     public bool AreaTrimWorkingSets { get; set; } = true;
     public bool AreaShaderCache { get; set; }
     public bool AreaStandbyList { get; set; } = true;
+    public bool AreaFileCache { get; set; }
     public bool AreaRestartDriver { get; set; }
+    public bool AreaRestartDwm { get; set; } = true;
+    public int DwmRestartMinMb { get; set; } = 1024;
 
     public bool HotkeyEnabled { get; set; }
     public int HotkeyModifiers { get; set; } = 1;  // index in Modifiers list
