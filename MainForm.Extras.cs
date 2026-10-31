@@ -9,7 +9,7 @@ public sealed partial class MainForm
     const int HistorySeconds = 300;
     const ulong LeakThreshold = 256UL << 20;
 
-    ListView _procList = null!; Panel _histPanel = null!, _procPanel = null!, _logPanel = null!; ListBox _log = null!; Label _procNote = null!; Panel _extPanel = null!; Button _extBtn = null!; Label _extInfo = null!; CheckBox _extAuto = null!; readonly ExtremeMode Extreme = new(); CheckBox _extProfiles = null!; (long used, long total) LastRam;
+    ListView _procList = null!; Panel _histPanel = null!, _procPanel = null!, _logPanel = null!; ListBox _log = null!; Label _procNote = null!; Panel _extPanel = null!; Button _extBtn = null!; Label _extInfo = null!; CheckBox _extAuto = null!; readonly ExtremeMode Extreme = new(); CheckBox _extProfiles = null!;
     readonly List<Button> _procButtons = new(); Button _exportBtn = null!;
     readonly Queue<(DateTime t, double pct)> Hist = new();
     readonly Dictionary<int, Queue<(DateTime t, ulong bytes)>> ProcHist = new();

@@ -20,7 +20,7 @@ public sealed partial class MainForm : Form
     DateTime LastAuto = DateTime.Now, OptimizedUntil = DateTime.MinValue;
     bool Busy, ReallyExit;
 
-    Panel _vramPanel = null!, _ramPanel = null!, _sharedPanel = null!; bool _alertFired; Label _gpuLabel = null!; Button _optBtn = null!;
+    Panel _vramPanel = null!, _sharedPanel = null!; bool _alertFired; Label _gpuLabel = null!; Button _optBtn = null!;
     ListBox _excluded = null!; ComboBox _procCombo = null!, _langCombo = null!, _modCombo = null!, _keyCombo = null!;
     TrackBar _everyBar = null!, _belowBar = null!; Label _everyLbl = null!, _belowLbl = null!;
 
@@ -180,8 +180,7 @@ public sealed partial class MainForm : Form
 
         // ---- Memory bars ----
         _vramPanel = Panel_(12, 556, 591, 64); _vramPanel.Paint += (_, e) => PaintBar(e.Graphics, _vramPanel, Last.DedicatedUsed, Last.DedicatedTotal);
-        _ramPanel = Panel_(12, 626, 591, 58); _ramPanel.Paint += (_, e) => PaintBar(e.Graphics, _ramPanel, (ulong)Math.Max(0, LastRam.used), (ulong)Math.Max(1, LastRam.total));
-        _sharedPanel = Panel_(12, 688, 591, 58); _sharedPanel.Paint += (_, e) => PaintBar(e.Graphics, _sharedPanel, Last.SharedUsed, Last.SharedTotal);
+        _sharedPanel = Panel_(12, 626, 591, 58); _sharedPanel.Paint += (_, e) => PaintBar(e.Graphics, _sharedPanel, Last.SharedUsed, Last.SharedTotal);
         _sharedPanel.Visible = S.ShowSharedMemory;
         _gpuLabel = new Label { Location = new Point(12, 778), AutoSize = true, ForeColor = Dim, Font = new Font("Segoe UI", 8f) };
         Controls.Add(_gpuLabel);
@@ -242,7 +241,7 @@ public sealed partial class MainForm : Form
     void PaintBar(Graphics g, Panel p, ulong used, ulong total)
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        string title = L.T(p == _vramPanel ? "vram" : p == _ramPanel ? "ram" : "shared", GpuMonitor.Format(total));
+        string title = L.T(p == _vramPanel ? "vram" : "shared", GpuMonitor.Format(total));
         using var titleFont = new Font("Segoe UI Semibold", 8.5f);
         g.DrawString(title, titleFont, Brushes.Gainsboro, 8, 6);
         var rect = new Rectangle(10, 30, p.Width - 20, 6);
@@ -265,7 +264,6 @@ public sealed partial class MainForm : Form
         if (Busy) return;
         Last = Mon.Sample();
         TrackHistory(); ExtremeTick();
-        LastRam = Native.RamUsage(); _ramPanel.Invalidate();
         if (S.VramAlert && !_alertFired && Last.DedicatedTotal > 0 && Last.DedicatedPercent >= S.DangerLevel)
         { _alertFired = true; if (S.ShowNotifications) Tray.ShowBalloonTip(4000, L.T("vramAlertTitle"), L.T("vramAlertBody", Last.DedicatedPercent), ToolTipIcon.Warning); }
         else if (Last.DedicatedPercent < S.WarningLevel) _alertFired = false;

@@ -43,7 +43,7 @@ public sealed class ExtremeMode
         "Discord", "msedge", "brave", "chrome", "firefox", "opera", "vivaldi", "Spotify", "WhatsApp", "Telegram", "SignalRgb", "SignalRgbLauncher",
         "LGHUB", "lghub_agent", "lghub_updater", "iCUE", "Corsair.Service", "RzSynapse", "notepad",
     };
-    public State Enter(int gamePid, string gameName, GpuMonitor mon, IEnumerable<string> excluded, List<string> log, bool keepUserApps = true)
+    public State Enter(int gamePid, string gameName, GpuMonitor mon, IEnumerable<string> excluded, List<string> log, bool keepUserApps = false)
     {
         var st = new State { GamePid = gamePid, GameName = gameName };
         string windir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
