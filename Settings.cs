@@ -24,6 +24,7 @@ public sealed class Settings
     public bool AreaFileCache { get; set; }
     public bool AreaRestartDriver { get; set; }
     public bool AreaRestartDwm { get; set; } = true;
+    public bool ExtremeAutoFullscreen { get; set; }
     public int DwmRestartMinMb { get; set; } = 1024;
 
     public bool HotkeyEnabled { get; set; }

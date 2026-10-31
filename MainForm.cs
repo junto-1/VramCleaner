@@ -31,7 +31,7 @@ public sealed partial class MainForm : Form
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         BackColor = Bg; ForeColor = Fg; Font = new Font("Segoe UI", 9f);
         FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false; StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(930, 750); TopMost = S.AlwaysOnTop;
+        ClientSize = new Size(930, 800); TopMost = S.AlwaysOnTop;
         Build();
         ApplyTexts();
         SetupTray();
@@ -182,7 +182,7 @@ public sealed partial class MainForm : Form
         _gpuLabel = new Label { Location = new Point(12, 706), AutoSize = true, ForeColor = Dim, Font = new Font("Segoe UI", 8f) };
         Controls.Add(_gpuLabel);
 
-        _optBtn = new Button { Location = new Point(12, 722), Size = new Size(591, 26), FlatStyle = FlatStyle.Flat, ForeColor = Accent, BackColor = PanelBg, Cursor = Cursors.Hand };
+        _optBtn = new Button { Location = new Point(12, 772), Size = new Size(591, 26), FlatStyle = FlatStyle.Flat, ForeColor = Accent, BackColor = PanelBg, Cursor = Cursors.Hand };
         _optBtn.FlatAppearance.BorderSize = 0;
         _optBtn.Click += (_, _) => Optimize(false);
         Texts.Add((_optBtn, "optimize"));
@@ -259,7 +259,7 @@ public sealed partial class MainForm : Form
     {
         if (Busy) return;
         Last = Mon.Sample();
-        TrackHistory();
+        TrackHistory(); ExtremeTick();
         _vramPanel.Invalidate(); _sharedPanel.Invalidate();
         UpdateTrayIcon();
         Tray.Text = $"VRAM {GpuMonitor.Format(Last.DedicatedUsed)} / {GpuMonitor.Format(Last.DedicatedTotal)} ({Last.DedicatedPercent:0}%)";
@@ -307,6 +307,7 @@ public sealed partial class MainForm : Form
     {
         var m = new ContextMenuStrip { BackColor = PanelBg, ForeColor = Fg, RenderMode = ToolStripRenderMode.System };
         m.Items.Add(L.T("optimize"), null, (_, _) => Optimize(false));
+        m.Items.Add(L.T(Extreme.Active ? "extremeExit" : "extremeEnter"), null, (_, _) => ToggleExtreme());
         m.Items.Add(L.T("show"), null, (_, _) => ShowWindow());
         m.Items.Add(new ToolStripSeparator());
         m.Items.Add(L.T("exit"), null, (_, _) => { ReallyExit = true; Close(); });

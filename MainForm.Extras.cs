@@ -9,7 +9,7 @@ public sealed partial class MainForm
     const int HistorySeconds = 300;
     const ulong LeakThreshold = 256UL << 20;
 
-    ListView _procList = null!; Panel _histPanel = null!, _procPanel = null!, _logPanel = null!; ListBox _log = null!; Label _procNote = null!;
+    ListView _procList = null!; Panel _histPanel = null!, _procPanel = null!, _logPanel = null!; ListBox _log = null!; Label _procNote = null!; Panel _extPanel = null!; Button _extBtn = null!; Label _extInfo = null!; CheckBox _extAuto = null!; readonly ExtremeMode Extreme = new();
     readonly List<Button> _procButtons = new(); Button _exportBtn = null!;
     readonly Queue<(DateTime t, double pct)> Hist = new();
     readonly Dictionary<int, Queue<(DateTime t, ulong bytes)>> ProcHist = new();
@@ -40,10 +40,11 @@ public sealed partial class MainForm
             _procPanel.Controls.Add(b); _procButtons.Add(b); x += 73;
         }
 
+        BuildExtreme();
         _histPanel = Panel_(616, 348, 302, 122);
         _histPanel.Paint += (_, e) => PaintHistory(e.Graphics, _histPanel);
 
-        _logPanel = Panel_(616, 478, 302, 270);
+        _logPanel = Panel_(616, 478, 302, 320);
         Title(_logPanel, "log");
         _log = new ListBox { Location = new Point(8, 26), Size = new Size(286, 206), BackColor = Color.FromArgb(35, 35, 35), ForeColor = Fg, BorderStyle = BorderStyle.None, HorizontalScrollbar = true, Font = new Font("Consolas", 8f) };
         _logPanel.Controls.Add(_log);
@@ -58,7 +59,7 @@ public sealed partial class MainForm
     {
         if (_procList == null) return;
         foreach (ColumnHeader c in _procList.Columns) c.Text = L.T((string)c.Tag!);
-        _procNote.Text = L.T("procNote");
+        _procNote.Text = L.T("procNote"); ApplyExtremeTexts();
         foreach (var b in _procButtons) b.Text = L.T((string)b.Tag!);
         _exportBtn.Text = L.T("export");
         _histPanel.Invalidate();
@@ -185,5 +186,90 @@ public sealed partial class MainForm
         using var dlg = new SaveFileDialog { Filter = "Text|*.txt", FileName = $"AmdVramCleaner-{DateTime.Now:yyyyMMdd-HHmm}.txt" };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
         File.WriteAllLines(dlg.FileName, _log.Items.Cast<string>().Reverse());
+    }
+}
+
+public sealed partial class MainForm
+{
+    void BuildExtreme()
+    {
+        _extPanel = Panel_(12, 708, 591, 56);
+        Title(_extPanel, "extreme");
+        _extBtn = new Button { Location = new Point(8, 24), Size = new Size(170, 26), FlatStyle = FlatStyle.Flat, ForeColor = Fg, Cursor = Cursors.Hand };
+        _extBtn.FlatAppearance.BorderColor = Color.FromArgb(90, 90, 90);
+        _extBtn.Click += (_, _) => ToggleExtreme();
+        _extInfo = new Label { Location = new Point(186, 22), Size = new Size(397, 14), ForeColor = Color.FromArgb(170, 170, 170), Font = new Font(Font.FontFamily, 7.5f) };
+        _extAuto = new CheckBox { Location = new Point(186, 36), AutoSize = true, ForeColor = Fg, Checked = S.ExtremeAutoFullscreen, Font = new Font(Font.FontFamily, 7.5f) };
+        _extAuto.CheckedChanged += (_, _) => { S.ExtremeAutoFullscreen = _extAuto.Checked; S.Save(); };
+        _extPanel.Controls.AddRange(new Control[] { _extBtn, _extInfo, _extAuto });
+        ApplyExtremeTexts();
+        Shown += (_, _) => RestoreExtreme();
+    }
+
+    void ApplyExtremeTexts()
+    {
+        if (_extBtn == null) return;
+        foreach (Control c in _extPanel.Controls) if (c is Label l && l.Tag is string k) l.Text = L.T(k);
+        _extBtn.Text = L.T(Extreme.Active ? "extremeExit" : "extremeEnter");
+        _extAuto.Text = L.T("extremeAuto");
+        _extAuto.Visible = !Extreme.Active;
+        _extInfo.Size = Extreme.Active ? new Size(397, 30) : new Size(397, 14);
+        _extInfo.Text = Extreme.Active ? L.T("extremeOn", Extreme.Current!.GameName, Extreme.Current.Closed.Count) : L.T("extremeIdle");
+    }
+
+    void RestoreExtreme()
+    {
+        var st = ExtremeMode.LoadPending();
+        if (st == null || st.Closed.Count == 0) { try { File.Delete(ExtremeMode.StateFile); } catch { } return; }
+        Extreme.Restore(st);
+        if (!Extreme.GameExited()) { ApplyExtremeTexts(); return; }
+        bool reopen = MessageBox.Show(this, L.T("extremeRestore", st.Closed.Count), L.T("extremeRestoreTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+        var log = Extreme.Exit(reopen);
+        AddLog(L.T("logExtremeOff", log.Count(l => l.StartsWith("relaunched"))));
+        ApplyExtremeTexts();
+    }
+
+    async void ToggleExtreme()
+    {
+        if (Extreme.Active) { LeaveExtreme(); return; }
+        (int pid, string name)? game = null;
+        var sel = Selected();
+        if (sel != null && !GpuCleaner.IsProtected(sel.Name)) game = (sel.Pid, sel.Name);
+        game ??= ExtremeMode.ForegroundFullscreen();
+        if (game == null) { MessageBox.Show(this, L.T("extremeNoGame"), Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+        if (MessageBox.Show(this, L.T("extremeConfirm", game.Value.name), Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+        await EnterExtreme(game.Value.pid, game.Value.name);
+    }
+
+    async Task EnterExtreme(int pid, string name)
+    {
+        _extBtn.Enabled = false;
+        var log = new List<string>();
+        var st = await Task.Run(() => Extreme.Enter(pid, name, Mon, S.ExcludedProcesses, log));
+        _extBtn.Enabled = true;
+        AddLog(L.T("logExtremeOn", st.Closed.Count, name));
+        foreach (var l in log) AddLog("  " + l);
+        ApplyExtremeTexts(); Tray.ContextMenuStrip = BuildTrayMenu();
+        Optimize(true);
+    }
+
+    void LeaveExtreme()
+    {
+        var log = Extreme.Exit(true);
+        int n = log.Count(l => l.StartsWith("relaunched"));
+        AddLog(L.T("logExtremeOff", n));
+        foreach (var l in log.Where(l => l.Contains("failed"))) AddLog("  " + l);
+        ApplyExtremeTexts(); Tray.ContextMenuStrip = BuildTrayMenu();
+        if (S.ShowNotifications) Tray.ShowBalloonTip(4000, L.T("extreme"), L.T("logExtremeOff", n), ToolTipIcon.Info);
+    }
+
+    DateTime _lastFullscreenCheck = DateTime.MinValue;
+    async void ExtremeTick()
+    {
+        if (Extreme.Active) { if (Extreme.GameExited()) LeaveExtreme(); return; }
+        if (!S.ExtremeAutoFullscreen || Busy || (DateTime.Now - _lastFullscreenCheck).TotalSeconds < 5) return;
+        _lastFullscreenCheck = DateTime.Now;
+        var g = ExtremeMode.ForegroundFullscreen();
+        if (g != null && Mon.Processes().Any(p => p.Pid == g.Value.pid && p.Dedicated > (64UL << 20))) await EnterExtreme(g.Value.pid, g.Value.name);
     }
 }

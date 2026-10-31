@@ -48,3 +48,13 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish\self-conta
 dotnet publish -c Release -r win-x64 --self-contained false -o publish\framework-dependent
 ```
 La variante *framework-dependent* requiere .NET 8 Desktop Runtime.
+
+## Modo Extremo (1.3)
+
+Pensado para jugar: cierra todas las aplicaciones de usuario y deja solo el juego y lo imprescindible del sistema; cuando el juego termina, reabre automáticamente lo que cerró.
+
+- Selecciona el juego en la lista de procesos (o déjalo a pantalla completa) y pulsa **Activar modo Extremo** (también en el menú de la bandeja).
+- Se cierran (primero con suavidad, forzado tras 5 s) los procesos de tu sesión con ventana o con memoria gráfica, salvo: el juego y los exes de su carpeta, procesos del sistema (`C:\Windows`), driver/Adrenalin de AMD, launchers (Steam, Epic, Battle.net, GOG, EA, Riot, Ubisoft), anti-cheats, Discord, OBS, software de periféricos y tus procesos excluidos.
+- Tras cerrar ejecuta una optimización normal. La lista de apps cerradas se guarda en `%APPDATA%\AmdVramCleaner\extreme-session.json`; si el limpiador se cerrara en medio, al abrirlo de nuevo pregunta si reabrirlas.
+- **Activar solo al detectar un juego a pantalla completa**: entra solo cuando la ventana en primer plano ocupa toda la pantalla y usa VRAM.
+- Botón **Salir del modo Extremo** para reabrir todo sin esperar a que el juego cierre.
